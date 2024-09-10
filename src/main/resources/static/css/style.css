@@ -1,6 +1,10 @@
 .error {
     color: red;
 }
+body{
+      text-align: center;
+      background-color: 62a7ad;
+}
 
 textarea {
     width: 50rem;
