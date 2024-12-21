@@ -1,102 +1,193 @@
 pipeline {
     agent any
-    
-    tools{
-        jdk "jdk17"
-        maven "maven"
+    tools {
+        jdk 'myjdk'
+        maven 'mymaven'
     }
-    environment{
-        SONAR_HOME = tool 'sonar-scanner'
+    environment {
+        SONAR_SCANNER_HOME = tool name: 'sonar-scanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+        IMAGE_NAME = 'onlinelearningofficial/cicdproject'
+        TAG = "${env.BUILD_NUMBER}"
     }
-
     stages {
         stage('Git Clone') {
             steps {
-                git 'https://github.com/udayyysharmaa/GameProject-NodeJs.git'
+                git branch: 'main', url: 'https://github.com/udayyysharmaa/GameProject-NodeJs.git'
             }
         }
-        stage('Compile the code') {
+        stage('Code Build') {
             steps {
-                sh "mvn compile"
+                sh 'mvn compile'
             }
         }
         stage('Code Test') {
             steps {
-                sh "mvn test"
+                sh 'mvn test'
             }
         }
-        stage('Build the Code') {
+        stage('Code Package') {
             steps {
-                sh "mvn clean package"
+                sh 'mvn package'
             }
         }
-        stage('File Scan') {
+        stage('Scan the File') {
             steps {
-                sh "trivy fs --format json -o index.json ."
+                sh 'trivy fs --format json -o file1.json .'
             }
         }
-        stage('Sonarqube Analysis') {
+        stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar') {
-                    sh '''
-                    $SONAR_HOME/bin/sonar-scanner  \
-                    -Dsonar.projectName=gamingproject \
-                    -Dsonar.projectKey=gamingproject \
-                    '''
+                    sh """
+                    $SONAR_SCANNER_HOME/bin/sonar-scanner \
+                    -Dsonar.projectName=myproject \
+                    -Dsonar.projectKey=myproject \
+                    -Dsonar.java.binaries=target
+                    """
                 }
-                
             }
         }
-        stage('Quality Gate') {
+        stage('Sonarqube Quality Gate ') {
             steps {
-               timeout(time: 1, unit: 'HOURS') {
-                   waitForQualityGate abortPipeline: false
-               }
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: false
+                }
             }
         }
-        stage('Creating a Image') {
+        stage('Create the docker image') {
             steps {
                 script{
                     // This step should not normally be used in your script. Consult the inline help for details.
-                    withDockerRegistry(credentialsId: 'docker') {
+                    withDockerRegistry(credentialsId: 'docker-hub') {
                         // some block
-                        sh 'docker build -t onlinelearningofficial/gamingproject:v1 .'
-                        
+                        sh 'docker build -t ${IMAGE_NAME}:${TAG} .'
+                        }
+                }
+            }
+        }
+        stage('Scan the Image') {
+            steps {
+                sh 'trivy image --format json -o file2.json ${IMAGE_NAME}:${TAG}'
+            }
+        }
+        stage('Push the docker image to docker hub') {
+            steps {
+                script{
+                    // This step should not normally be used in your script. Consult the inline help for details.
+                    withDockerRegistry(credentialsId: 'docker-hub') {
+                        // some block
+                        sh 'docker push ${IMAGE_NAME}:${TAG} '
+                        }
+                }
+            }
+        }
+        stage('Update Kubernetes Manifest') {
+            steps {
+                script {
+                sh """
+                sed -i "s|image: .*|image: ${IMAGE_NAME}:${TAG}|" deployment-service.yaml
+                """
+                    
+                }
+                
+            }
+            
+        }
+        stage('Git Update ') {
+            steps {
+                script{
+                    withCredentials([usernamePassword(credentialsId: 'github', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
+                        sh """
+                        git config --global user.email "udaysharmaniit12345@gmail.com"
+                        git config --global user.name "udayyysharmaa"
+                        git remote set-url origin https://${USER}:${PASS}@github.com/udayyysharmaa/GameProject-NodeJs.git
+                        git pull origin main
+                        git add deployment-service.yaml file1.json file2.json
+                        git commit -m "Update image to ${IMAGE_NAME}:${TAG}" || echo "No changes to commit"
+                        git push origin main
+                        """
                     }
                 }
                 
             }
+            
         }
-        stage('Image Scan') {
+        stage('Check and Install Terraform') {
             steps {
-                sh "trivy image --format json -o Image.json onlinelearningofficial/gamingproject:v1"
-            }
-        }
-        stage('Push the Image to DockerHub') {
-            steps {
-                script{
-                    // This step should not normally be used in your script. Consult the inline help for details.
-                    withDockerRegistry(credentialsId: 'docker') {
-                        // some block
-                        sh 'docker push onlinelearningofficial/gamingproject:v1 '
-                        
+                script {
+                    if (sh(script: 'which terraform || echo "not found"', returnStatus: true) != 0) {
+                        echo 'Terraform not found, installing...'
+                        sh 'sudo snap install terraform --classic'
+                    } else {
+                        echo 'Terraform is already installed.'
                     }
                 }
-                
             }
         }
-        stage('Deploy the Application') {
+        stage('Check and Create Kubernetes Cluster') {
             steps {
-                script{
-                    // This step should not normally be used in your script. Consult the inline help for details.
-                    withDockerRegistry(credentialsId: 'docker') {
-                        // some block
-                        sh 'docker run -d --name gamingproject -p 8080:8080 onlinelearningofficial/gamingproject:v1 '
-                        
+                script {
+                    def clusterExists = sh(
+                        script: "kubectl config get-clusters | grep -w 'devopsshack' || echo 'not found'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (clusterExists == 'not found') {
+                        echo 'Cluster devopsshack not found. Creating the cluster...'
+                        dir('/home/ubuntu/.jenkins/workspace/CICD/Cluster') {
+                            sh 'terraform init'
+                            sh 'terraform plan'
+                            sleep 20
+                            sh 'terraform apply --auto-approve'
+                            sleep 60
+                            sh 'aws eks --region us-west-2 update-kubeconfig --name devopsshack-cluster'
+                        }
+                    } else {
+                        echo 'Cluster devopsshack already exists.'
                     }
                 }
+            }
+        }
+stage('Deploy the Application to EKS') {
+    steps {
+        withKubeConfig(
+            caCertificate: '', 
+            clusterName: 'devopsshack-cluster', 
+            contextName: '', 
+            credentialsId: 'k8s', 
+            namespace: 'cred', 
+            restrictKubeConfigAccess: false, 
+            serverUrl: 'https://6E18A8664EA174B1FD2270F25DADCEDA.gr7.us-west-2.eks.amazonaws.com'
+        ) {
+            script {
+                // Apply the YAML file to the specified namespace
+                sh 'kubectl apply -f deployment-service.yaml -n cred'
                 
+                // Wait for the pods to become ready
+                sh """
+                echo "Waiting for pods to be ready..."
+                kubectl wait --for=condition=ready pod -l app=boardgame -n cred --timeout=120s
+                """
             }
         }
     }
 }
+
+        stage('Verify the Application to EKS') {
+            steps {
+                withKubeConfig(caCertificate: '', clusterName: 'devopsshack-cluster', contextName: '', credentialsId: 'k8s', namespace: 'cred', restrictKubeConfigAccess: false, serverUrl: 'https://6E18A8664EA174B1FD2270F25DADCEDA.gr7.us-west-2.eks.amazonaws.com') {
+                    sh 'kubectl get pods -n cred'
+                    sh 'kubectl get svc -n cred'
+                    sleep 60
+                }
+                
+            }
+        }
+
+    }
+    
+}
+    
+
+
+
