@@ -1,7 +1,7 @@
 {
   "SchemaVersion": 2,
-  "CreatedAt": "2024-12-21T19:28:58.248531496Z",
-  "ArtifactName": "onlinelearningofficial/cicdproject:27",
+  "CreatedAt": "2024-12-21T19:34:09.953033067Z",
+  "ArtifactName": "onlinelearningofficial/cicdproject:28",
   "ArtifactType": "container_image",
   "Metadata": {
     "OS": {
@@ -28,7 +28,8 @@
       "onlinelearningofficial/cicdproject:24",
       "onlinelearningofficial/cicdproject:25",
       "onlinelearningofficial/cicdproject:26",
-      "onlinelearningofficial/cicdproject:27"
+      "onlinelearningofficial/cicdproject:27",
+      "onlinelearningofficial/cicdproject:28"
     ],
     "RepoDigests": [
       "onlinelearningofficial/cicdproject@sha256:cef0b0ffb1b72789964c5daab7d459b4bc00144628cb818a559bada7725c57af"
@@ -162,7 +163,7 @@
   },
   "Results": [
     {
-      "Target": "onlinelearningofficial/cicdproject:27 (ubuntu 20.04)",
+      "Target": "onlinelearningofficial/cicdproject:28 (ubuntu 20.04)",
       "Class": "os-pkgs",
       "Type": "ubuntu",
       "Vulnerabilities": [
