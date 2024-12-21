@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: boardgame
-          image: onlinelearningofficial/cicdproject:20
+          image: onlinelearningofficial/cicdproject:21
           imagePullPolicy: Always
           ports:
             - containerPort: 8080 # The port that the container is running on in the cluster
